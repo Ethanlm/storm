@@ -4236,6 +4236,8 @@ public class Nimbus implements Iface, Shutdownable, DaemonCommon {
                     LOG.info("{} has resource {}", resourceMap.getKey(), resourceMap.getValue());
                 }
             }
+            LOG.info("number of executors: {}", compPageInfo.get_num_executors());
+            LOG.info("number of tasks: {}", compPageInfo.get_num_tasks());
 
             return compPageInfo;
         } catch (Exception e) {
