@@ -4228,6 +4228,7 @@ public class Nimbus implements Iface, Shutdownable, DaemonCommon {
                 }
             }
             // Debuggingggggg.
+            LOG.info("getting resourceMap");
             if (compPageInfo.is_set_resources_map()) {
                 LOG.info("resourceMap not null");
 
