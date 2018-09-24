@@ -233,7 +233,7 @@ public class ContainerTest {
                   topoConf, ops, metricsRegistry, new ContainerMemoryTracker(new StormMetricsRegistry()));
         }
 
-        @Override
+        /*@Override
         protected void kill(long pid) {
             killedPids.add(pid);
         }
@@ -246,7 +246,7 @@ public class ContainerTest {
         @Override
         protected Set<Long> getAllPids() throws IOException {
             return allPids;
-        }
+        }*/
 
         @Override
         public void launch() throws IOException {

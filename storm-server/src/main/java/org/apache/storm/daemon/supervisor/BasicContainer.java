@@ -132,14 +132,15 @@ public class BasicContainer extends Container {
         super(type, conf, supervisorId, supervisorPort, port, assignment,
             resourceIsolationManager, workerId, topoConf, ops, metricsRegistry, containerMemoryTracker);
         assert (localState != null);
+        assert (_resourceIsolationManager != null);
         _localState = localState;
 
         if (type.isRecovery() && !type.isOnlyKillable()) {
-            synchronized (localState) {
+            synchronized (_localState) {
                 String wid = null;
-                Map<String, Integer> workerToPort = localState.getApprovedWorkers();
+                Map<String, Integer> workerToPort = _localState.getApprovedWorkers();
                 for (Map.Entry<String, Integer> entry : workerToPort.entrySet()) {
-                    if (port == entry.getValue().intValue()) {
+                    if (port == entry.getValue()) {
                         wid = entry.getKey();
                     }
                 }
@@ -178,7 +179,7 @@ public class BasicContainer extends Container {
     private static void removeWorkersOn(Map<String, Integer> workerToPort, int _port) {
         for (Iterator<Entry<String, Integer>> i = workerToPort.entrySet().iterator(); i.hasNext(); ) {
             Entry<String, Integer> found = i.next();
-            if (_port == found.getValue().intValue()) {
+            if (_port == found.getValue()) {
                 LOG.warn("Deleting worker {} from state", found.getKey());
                 i.remove();
             }
@@ -247,26 +248,6 @@ public class BasicContainer extends Container {
         return _exitedEarly;
     }
 
-    /**
-     * Run the given command for profiling.
-     *
-     * @param command   the command to run
-     * @param env       the environment to run the command
-     * @param logPrefix the prefix to include in the logs
-     * @param targetDir the working directory to run the command in
-     * @return true if it ran successfully, else false
-     *
-     * @throws IOException          on any error
-     * @throws InterruptedException if interrupted wile waiting for the process to exit.
-     */
-    protected boolean runProfilingCommand(List<String> command, Map<String, String> env, String logPrefix,
-                                          File targetDir) throws IOException, InterruptedException {
-        _type.assertFull();
-        Process p = ClientSupervisorUtils.launchProcess(command, env, logPrefix, null, targetDir);
-        int ret = p.waitFor();
-        return ret == 0;
-    }
-
     @Override
     public boolean runProfiling(ProfileRequest request, boolean stop) throws IOException, InterruptedException {
         _type.assertFull();
@@ -290,7 +271,8 @@ public class BasicContainer extends Container {
 
         File targetFile = new File(targetDir);
         if (command.size() > 0) {
-            return runProfilingCommand(command, env, logPrefix, targetFile);
+            _type.assertFull();
+            return _resourceIsolationManager.runProfilingCommand(user, command, env, logPrefix, targetFile);
         }
         LOG.warn("PROFILING REQUEST NOT SUPPORTED {} IGNORED...", request);
         return true;
@@ -380,8 +362,8 @@ public class BasicContainer extends Container {
     protected List<String> frameworkClasspath(SimpleVersion topoVersion) {
         File stormWorkerLibDir = new File(_stormHome, "lib-worker");
         String topoConfDir =
-            System.getenv("STORM_CONF_DIR") != null ?
-                System.getenv("STORM_CONF_DIR") :
+            System.getenv("STORM_CONF_DIR") != null
+                ? System.getenv("STORM_CONF_DIR") :
                 new File(_stormHome, "conf").getAbsolutePath();
         File stormExtlibDir = new File(_stormHome, "extlib");
         String extcp = System.getenv("STORM_EXT_CLASSPATH");
@@ -491,26 +473,6 @@ public class BasicContainer extends Container {
             }
         }
         return rets;
-    }
-
-    /**
-     * Launch the worker process (non-blocking).
-     *
-     * @param command             the command to run
-     * @param env                 the environment to run the command
-     * @param processExitCallback a callback for when the process exits
-     * @param logPrefix           the prefix to include in the logs
-     * @param targetDir           the working directory to run the command in
-     * @return true if it ran successfully, else false
-     *
-     * @throws IOException on any error
-     */
-    protected void launchWorkerProcess(List<String> command, Map<String, String> env, String logPrefix,
-                                       ExitCodeCallback processExitCallback, File targetDir) throws IOException {
-        if (_resourceIsolationManager != null) {
-            command = _resourceIsolationManager.getLaunchCommand(_workerId, command);
-        }
-        ClientSupervisorUtils.launchProcess(command, env, logPrefix, processExitCallback, targetDir);
     }
 
     private String getWorkerLoggingConfigFile() {
@@ -688,7 +650,7 @@ public class BasicContainer extends Container {
         if (super.isMemoryLimitViolated(withUpdatedLimits)) {
             return true;
         }
-        if (_resourceIsolationManager != null) {
+        if (_resourceIsolationManager.checkMemory()) {
             // In the short term the goal is to not shoot anyone unless we really need to.
             // The on heap should limit the memory usage in most cases to a reasonable amount
             // If someone is using way more than they requested this is a bug and we should
@@ -784,7 +746,7 @@ public class BasicContainer extends Container {
     public long getMemoryUsageMb() {
         try {
             long ret = 0;
-            if (_resourceIsolationManager != null) {
+            if (_resourceIsolationManager.checkMemory()) {
                 long usageBytes = _resourceIsolationManager.getMemoryUsage(_workerId);
                 if (usageBytes >= 0) {
                     ret = usageBytes / 1024 / 1024;
@@ -804,7 +766,7 @@ public class BasicContainer extends Container {
 
     private long calculateMemoryLimit(final WorkerResources resources, final int memOnHeap) {
         long ret = memOnHeap;
-        if (_resourceIsolationManager != null) {
+        if (_resourceIsolationManager.checkMemory()) {
             final int memoffheap = (int) Math.ceil(resources.get_mem_off_heap());
             final int extraMem =
                 (int)
@@ -846,7 +808,7 @@ public class BasicContainer extends Container {
 
         topEnvironment.put("LD_LIBRARY_PATH", jlp);
 
-        if (_resourceIsolationManager != null) {
+        if (_resourceIsolationManager.checkMemory()) {
             final int cpu = (int) Math.ceil(resources.get_cpu());
             //Save the memory limit so we can enforce it less strictly
             _resourceIsolationManager.reserveResourcesForWorker(_workerId, (int) memoryLimitMB, cpu);
@@ -858,7 +820,8 @@ public class BasicContainer extends Container {
 
         String workerDir = ConfigUtils.workerRoot(_conf, _workerId);
 
-        launchWorkerProcess(commandList, topEnvironment, logPrefix, processExitCallback, new File(workerDir));
+        _resourceIsolationManager.launchWorkerProcess(user, _workerId, commandList, topEnvironment,
+            logPrefix, processExitCallback, new File(workerDir));
     }
 
     private static class TopologyMetaData {

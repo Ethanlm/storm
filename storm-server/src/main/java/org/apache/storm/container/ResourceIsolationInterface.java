@@ -12,10 +12,12 @@
 
 package org.apache.storm.container;
 
+import java.io.File;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.apache.storm.daemon.supervisor.ExitCodeCallback;
 
 /**
  * A plugin to support resource isolation and limitation within Storm.
@@ -47,33 +49,8 @@ public interface ResourceIsolationInterface {
      */
     void releaseResourcesForWorker(String workerId);
 
-    /**
-     * After reserving resources for the worker (i.e. calling reserveResourcesForWorker). This function can be used
-     * to get the modified command line to launch the worker with resource isolation
-     *
-     * @param existingCommand the current command to run that may need to be modified.
-     * @return new commandline with necessary additions to launch worker with resource isolation
-     */
-    List<String> getLaunchCommand(String workerId, List<String> existingCommand);
-
-    /**
-     * After reserving resources for the worker (i.e. calling reserveResourcesForWorker). this function can be used
-     * to get the launch command prefix
-     *
-     * @param workerId the of the worker
-     * @return the command line prefix for launching a worker with resource isolation
-     */
-    List<String> getLaunchCommandPrefix(String workerId);
-
-    /**
-     * Get the list of PIDs currently in an isolated container.
-     *
-     * @param workerId the id of the worker to get these for
-     * @return the set of PIDs, this will be combined with other ways of getting PIDs. An Empty set if no PIDs are
-     *     found.
-     * @throws IOException on any error
-     */
-    Set<Long> getRunningPids(String workerId) throws IOException;
+    void launchWorkerProcess(String user, String workerId, List<String> command, Map<String, String> env, String logPrefix,
+                             ExitCodeCallback processExitCallback, File targetDir) throws IOException;
 
     /**
      * Get the current memory usage of the a given worker.
@@ -90,4 +67,11 @@ public interface ResourceIsolationInterface {
      * @throws IOException on any error.
      */
     long getSystemFreeMemoryMb() throws IOException;
+
+
+    void kill(String workerId, String user) throws IOException;
+    void forceKill(String workerId, String user) throws IOException;
+    boolean areAllProcessesDead(String workerId, String userOfProcess) throws IOException;
+    boolean checkMemory();
+    boolean runProfilingCommand(String user, List<String> command, Map<String, String> env, String logPrefix, File targetDir) throws IOException, InterruptedException;
 }

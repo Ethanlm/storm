@@ -12,6 +12,7 @@
 
 package org.apache.storm.container.cgroup;
 
+import com.google.common.annotations.VisibleForTesting;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileNotFoundException;
@@ -30,17 +31,22 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.apache.storm.Config;
 import org.apache.storm.DaemonConfig;
+import org.apache.storm.container.DefaultResourceIsolationManager;
 import org.apache.storm.container.ResourceIsolationInterface;
 import org.apache.storm.container.cgroup.core.CpuCore;
 import org.apache.storm.container.cgroup.core.MemoryCore;
+import org.apache.storm.daemon.supervisor.ClientSupervisorUtils;
+import org.apache.storm.daemon.supervisor.ExitCodeCallback;
+import org.apache.storm.utils.ConfigUtils;
 import org.apache.storm.utils.ObjectReader;
+import org.apache.storm.utils.ServerUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
  * Class that implements ResourceIsolationInterface that manages cgroups.
  */
-public class CgroupManager implements ResourceIsolationInterface {
+public class CgroupManager extends DefaultResourceIsolationManager {
 
     private static final Logger LOG = LoggerFactory.getLogger(CgroupManager.class);
     private static final Pattern MEMINFO_PATTERN = Pattern.compile("^([^:\\s]+):\\s*([0-9]+)\\s*kB$");
@@ -49,6 +55,7 @@ public class CgroupManager implements ResourceIsolationInterface {
     private CgroupCommon rootCgroup;
     private String rootDir;
     private Map<String, Object> conf;
+    private boolean runAsUser;
 
     static long getMemInfoFreeMb() throws IOException {
         //MemFree:        14367072 kB
@@ -85,6 +92,7 @@ public class CgroupManager implements ResourceIsolationInterface {
     @Override
     public void prepare(Map<String, Object> conf) throws IOException {
         this.conf = conf;
+        runAsUser = ObjectReader.getBoolean(conf.get(Config.SUPERVISOR_RUN_WORKER_AS_USER), false);
         this.rootDir = DaemonConfig.getCgroupRootDir(this.conf);
         if (this.rootDir == null) {
             throw new RuntimeException("Check configuration file. The storm.supervisor.cgroup.rootdir is missing.");
@@ -219,14 +227,28 @@ public class CgroupManager implements ResourceIsolationInterface {
     }
 
     @Override
+    public void launchWorkerProcess(String user, String workerId, List<String> command, Map<String, String> env, String logPrefix,
+                                    ExitCodeCallback processExitCallback, File targetDir) throws IOException {
+        if (runAsUser) {
+            String workerDir = targetDir.getAbsolutePath();
+            List<String> args = Arrays.asList("worker", workerDir, ServerUtils.writeScript(workerDir, command, env));
+            List<String> commandPrefix = getLaunchCommandPrefix(workerId);
+            ClientSupervisorUtils.processLauncher(conf, user, commandPrefix, args, null,
+                logPrefix, processExitCallback, targetDir);
+        } else {
+            command = getLaunchCommand(workerId, command);
+            ClientSupervisorUtils.launchProcess(command, env, logPrefix, processExitCallback, targetDir);
+        }
+    }
+
+    @VisibleForTesting
     public List<String> getLaunchCommand(String workerId, List<String> existingCommand) {
         List<String> newCommand = getLaunchCommandPrefix(workerId);
         newCommand.addAll(existingCommand);
         return newCommand;
     }
 
-    @Override
-    public List<String> getLaunchCommandPrefix(String workerId) {
+    private List<String> getLaunchCommandPrefix(String workerId) {
         CgroupCommon workerGroup = new CgroupCommon(workerId, this.hierarchy, this.rootCgroup);
 
         if (!this.rootCgroup.getChildren().contains(workerGroup)) {
@@ -253,14 +275,26 @@ public class CgroupManager implements ResourceIsolationInterface {
         return newCommand;
     }
 
-    @Override
-    public Set<Long> getRunningPids(String workerId) throws IOException {
+    private Set<Long> getRunningPids(String workerId) throws IOException {
         CgroupCommon workerGroup = new CgroupCommon(workerId, this.hierarchy, this.rootCgroup);
         if (!this.rootCgroup.getChildren().contains(workerGroup)) {
             LOG.warn("cgroup {} doesn't exist!", workerGroup);
             return Collections.emptySet();
         }
         return workerGroup.getPids();
+    }
+
+    /**
+     * @return all of the pids that are a part of this container.
+     */
+    @Override
+    protected Set<Long> getAllPids(String workerId) throws IOException {
+        Set<Long> ret = super.getAllPids(workerId);
+
+        Set<Long> morePids = getRunningPids(workerId);
+        assert (morePids != null);
+        ret.addAll(morePids);
+        return ret;
     }
 
     @Override
@@ -286,5 +320,10 @@ public class CgroupManager implements ResourceIsolationInterface {
         }
 
         return Long.min(rootCgroupLimitFree, getMemInfoFreeMb());
+    }
+
+    @Override
+    public boolean checkMemory() {
+        return true;
     }
 }

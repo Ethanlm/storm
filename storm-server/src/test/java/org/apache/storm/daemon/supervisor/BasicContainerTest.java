@@ -676,18 +676,18 @@ public class BasicContainerTest {
             return super.substituteChildopts(value, memOnheap);
         }
 
-        @Override
+      /*  @Override
         protected boolean runProfilingCommand(List<String> command, Map<String, String> env, String logPrefix,
                                               File targetDir) throws IOException, InterruptedException {
             profileCmds.add(new CommandRun(command, env, targetDir));
             return true;
-        }
+        }*/
 
-        @Override
+/*        @Override
         protected void launchWorkerProcess(List<String> command, Map<String, String> env, String logPrefix,
                                            ExitCodeCallback processExitCallback, File targetDir) throws IOException {
             workerCmds.add(new CommandRun(command, env, targetDir));
-        }
+        }*/
 
         @Override
         protected String javaCmd(String cmd) {
