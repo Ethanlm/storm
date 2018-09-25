@@ -40,6 +40,7 @@ import org.apache.storm.daemon.supervisor.ExitCodeCallback;
 import org.apache.storm.utils.ConfigUtils;
 import org.apache.storm.utils.ObjectReader;
 import org.apache.storm.utils.ServerUtils;
+import org.apache.storm.utils.Utils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -49,40 +50,10 @@ import org.slf4j.LoggerFactory;
 public class CgroupManager extends DefaultResourceIsolationManager {
 
     private static final Logger LOG = LoggerFactory.getLogger(CgroupManager.class);
-    private static final Pattern MEMINFO_PATTERN = Pattern.compile("^([^:\\s]+):\\s*([0-9]+)\\s*kB$");
     private CgroupCenter center;
     private Hierarchy hierarchy;
     private CgroupCommon rootCgroup;
     private String rootDir;
-    private Map<String, Object> conf;
-    private boolean runAsUser;
-
-    static long getMemInfoFreeMb() throws IOException {
-        //MemFree:        14367072 kB
-        //Buffers:          536512 kB
-        //Cached:          1192096 kB
-        // MemFree + Buffers + Cached
-        long memFree = 0;
-        long buffers = 0;
-        long cached = 0;
-        try (BufferedReader in = new BufferedReader(new FileReader("/proc/meminfo"))) {
-            String line = null;
-            while ((line = in.readLine()) != null) {
-                Matcher match = MEMINFO_PATTERN.matcher(line);
-                if (match.matches()) {
-                    String tag = match.group(1);
-                    if (tag.equalsIgnoreCase("MemFree")) {
-                        memFree = Long.parseLong(match.group(2));
-                    } else if (tag.equalsIgnoreCase("Buffers")) {
-                        buffers = Long.parseLong(match.group(2));
-                    } else if (tag.equalsIgnoreCase("Cached")) {
-                        cached = Long.parseLong(match.group(2));
-                    }
-                }
-            }
-        }
-        return (memFree + buffers + cached) / 1024;
-    }
 
     /**
      * initialize data structures.
@@ -91,8 +62,7 @@ public class CgroupManager extends DefaultResourceIsolationManager {
      */
     @Override
     public void prepare(Map<String, Object> conf) throws IOException {
-        this.conf = conf;
-        runAsUser = ObjectReader.getBoolean(conf.get(Config.SUPERVISOR_RUN_WORKER_AS_USER), false);
+        super.prepare(conf);
         this.rootDir = DaemonConfig.getCgroupRootDir(this.conf);
         if (this.rootDir == null) {
             throw new RuntimeException("Check configuration file. The storm.supervisor.cgroup.rootdir is missing.");
@@ -319,7 +289,7 @@ public class CgroupManager extends DefaultResourceIsolationManager {
             //Ignored if cgroups is not setup don't do anything with it
         }
 
-        return Long.min(rootCgroupLimitFree, getMemInfoFreeMb());
+        return Long.min(rootCgroupLimitFree, Utils.getMemInfoFreeMb());
     }
 
     @Override

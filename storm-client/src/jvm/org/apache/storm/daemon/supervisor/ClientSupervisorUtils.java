@@ -19,7 +19,9 @@
 package org.apache.storm.daemon.supervisor;
 
 import com.codahale.metrics.Meter;
+import java.io.BufferedWriter;
 import java.io.File;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
@@ -75,6 +77,33 @@ public class ClientSupervisorUtils {
         }
         ret = process.exitValue();
         return ret;
+    }
+
+    public static Process runDockerCommand(Map<String, Object> conf, List<String> dockerCommand,
+                                           Map<String, String> environment, final String logPrefix,
+                                           final ExitCodeCallback exitCodeCallback, File targetDir) throws IOException {
+        String workerDir = targetDir.getAbsolutePath();
+        String dockerScriptPath = workerDir + File.separator + "storm-docker-command.tmp.sh";
+
+        try (BufferedWriter out = new BufferedWriter(new FileWriter(dockerScriptPath))) {
+            out.write(StringUtils.join(dockerCommand, " "));
+        }
+
+        String wlinitial = (String) (conf.get(Config.SUPERVISOR_WORKER_LAUNCHER));
+        String stormHome = ConfigUtils.concatIfNotNull(System.getProperty(ConfigUtils.STORM_HOME));
+        String wl;
+        if (StringUtils.isNotBlank(wlinitial)) {
+            wl = wlinitial;
+        } else {
+            wl = stormHome + "/bin/worker-launcher";
+        }
+        List<String> commands = new ArrayList<>();
+        commands.add(wl);
+        commands.add("--run-docker");
+        commands.add(workerDir);
+        commands.add(dockerScriptPath);
+        LOG.info("Running command: {}", commands);
+        return launchProcess(commands, environment, logPrefix, exitCodeCallback, targetDir);
     }
 
     public static Process processLauncher(Map<String, Object> conf, String user, List<String> commandPrefix, List<String> args,

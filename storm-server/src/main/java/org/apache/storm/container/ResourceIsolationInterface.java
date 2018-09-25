@@ -73,5 +73,5 @@ public interface ResourceIsolationInterface {
     void forceKill(String workerId, String user) throws IOException;
     boolean areAllProcessesDead(String workerId, String userOfProcess) throws IOException;
     boolean checkMemory();
-    boolean runProfilingCommand(String user, List<String> command, Map<String, String> env, String logPrefix, File targetDir) throws IOException, InterruptedException;
+    boolean runProfilingCommand(String workerId, String user, List<String> command, Map<String, String> env, String logPrefix, File targetDir) throws IOException, InterruptedException;
 }

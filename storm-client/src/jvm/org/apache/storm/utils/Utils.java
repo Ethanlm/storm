@@ -1663,6 +1663,35 @@ public class Utils {
         return true;
     }
 
+    private static final Pattern MEMINFO_PATTERN = Pattern.compile("^([^:\\s]+):\\s*([0-9]+)\\s*kB$");
+
+    public static long getMemInfoFreeMb() throws IOException {
+        //MemFree:        14367072 kB
+        //Buffers:          536512 kB
+        //Cached:          1192096 kB
+        // MemFree + Buffers + Cached
+        long memFree = 0;
+        long buffers = 0;
+        long cached = 0;
+        try (BufferedReader in = new BufferedReader(new FileReader("/proc/meminfo"))) {
+            String line = null;
+            while ((line = in.readLine()) != null) {
+                Matcher match = MEMINFO_PATTERN.matcher(line);
+                if (match.matches()) {
+                    String tag = match.group(1);
+                    if (tag.equalsIgnoreCase("MemFree")) {
+                        memFree = Long.parseLong(match.group(2));
+                    } else if (tag.equalsIgnoreCase("Buffers")) {
+                        buffers = Long.parseLong(match.group(2));
+                    } else if (tag.equalsIgnoreCase("Cached")) {
+                        cached = Long.parseLong(match.group(2));
+                    }
+                }
+            }
+        }
+        return (memFree + buffers + cached) / 1024;
+    }
+
     /**
      * A thread that can answer if it is sleeping in the case of simulated time. This class is not useful when simulated time is not being
      * used.

@@ -173,6 +173,7 @@ public class BasicContainer extends Container {
         if (assignment != null) {
             WorkerResources resources = assignment.get_resources();
             memoryLimitMB = calculateMemoryLimit(resources, getMemOnHeap(resources));
+            LOG.info("memoryLimitMB={}", memoryLimitMB);
         }
     }
 
@@ -272,7 +273,7 @@ public class BasicContainer extends Container {
         File targetFile = new File(targetDir);
         if (command.size() > 0) {
             _type.assertFull();
-            return _resourceIsolationManager.runProfilingCommand(user, command, env, logPrefix, targetFile);
+            return _resourceIsolationManager.runProfilingCommand(_workerId, user, command, env, logPrefix, targetFile);
         }
         LOG.warn("PROFILING REQUEST NOT SUPPORTED {} IGNORED...", request);
         return true;

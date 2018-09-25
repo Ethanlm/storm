@@ -23,8 +23,8 @@ import org.slf4j.LoggerFactory;
 
 public class DefaultResourceIsolationManager implements ResourceIsolationInterface {
     private static final Logger LOG = LoggerFactory.getLogger(DefaultResourceIsolationManager.class);
-    private Map<String, Object> conf;
-    private boolean runAsUser;
+    protected Map<String, Object> conf;
+    protected boolean runAsUser;
 
     public void prepare(Map<String, Object> conf) throws IOException {
         this.conf = conf;
@@ -82,7 +82,7 @@ public class DefaultResourceIsolationManager implements ResourceIsolationInterfa
      * @throws InterruptedException if interrupted wile waiting for the process to exit.
      */
     @Override
-    public boolean runProfilingCommand(String user, List<String> command, Map<String, String> env, String logPrefix,
+    public boolean runProfilingCommand(String workerId, String user, List<String> command, Map<String, String> env, String logPrefix,
                                           File targetDir) throws IOException, InterruptedException {
         if (runAsUser) {
             String td = targetDir.getAbsolutePath();

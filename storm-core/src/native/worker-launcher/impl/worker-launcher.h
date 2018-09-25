@@ -68,9 +68,7 @@ extern FILE *ERRORFILE;
 
 int setup_dir_permissions(const char* local_dir, int for_blob_permission);
 
-int exec_as_user(const char * working_dir, const char * args);
-
-int fork_as_user(const char * working_dir, const char * args);
+int exec_as_user(const char * working_dir, const char * args, int as_root);
 
 /**
  * delete a directory (or file) recursively. If supervisor_owns_dir,

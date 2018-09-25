@@ -33,7 +33,6 @@
 #include <sys/stat.h>
 
 static const int DEFAULT_MIN_USERID = 1000;
-
 static const char* DEFAULT_BANNED_USERS[] = {"bin", 0};
 
 //struct to store the user details
@@ -337,6 +336,7 @@ static int open_file_as_wl(const char* filename) {
  */
 static int copy_file(int input, const char* in_filename, 
 		     const char* out_filename, mode_t perm) {
+  remove(out_filename);
   const int buffer_size = 128*1024;
   char buffer[buffer_size];
   int out_fd = open(out_filename, O_WRONLY|O_CREAT|O_EXCL|O_NOFOLLOW, perm);
@@ -643,7 +643,7 @@ int recursive_delete(const char *path, int supervisor_owns_dir) {
   return 0;
 }
 
-int exec_as_user(const char * working_dir, const char * script_file) {
+int exec_as_user(const char * working_dir, const char * script_file, int as_root) {
   char *script_file_dest = NULL;
   script_file_dest = get_container_launcher_file(working_dir);
   if (script_file_dest == NULL) {
@@ -658,9 +658,11 @@ int exec_as_user(const char * working_dir, const char * script_file) {
 
   setsid();
 
-  // give up root privs
-  if (change_user(user_detail->pw_uid, user_detail->pw_gid) != 0) {
-    return SETUID_OPER_FAILED;
+  if (!as_root) {
+    // give up root privs
+    if (change_user(user_detail->pw_uid, user_detail->pw_gid) != 0) {
+      return SETUID_OPER_FAILED;
+    }
   }
 
   if (copy_file(script_file_source, script_file, script_file_dest, S_IRWXU) != 0) {
