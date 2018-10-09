@@ -12,10 +12,12 @@
 
 package org.apache.storm.container;
 
+import java.io.File;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.apache.storm.daemon.supervisor.ExitCodeCallback;
 
 /**
  * A plugin to support resource isolation and limitation within Storm.
@@ -48,32 +50,19 @@ public interface ResourceIsolationInterface {
     void releaseResourcesForWorker(String workerId);
 
     /**
-     * After reserving resources for the worker (i.e. calling reserveResourcesForWorker). This function can be used
-     * to get the modified command line to launch the worker with resource isolation
-     *
-     * @param existingCommand the current command to run that may need to be modified.
-     * @return new commandline with necessary additions to launch worker with resource isolation
+     * After reserving resources for the worker (i.e. calling reserveResourcesForWorker),
+     * this function can be used to launch worker process.
+     * @param user                the user who runs the command as
+     * @param workerId            the Id of the worker
+     * @param command             the command to run
+     * @param env                 the environment to run the command
+     * @param logPrefix           the prefix to include in the logs
+     * @param processExitCallback a callback for when the process exits
+     * @param targetDir           the working directory to run the command in
+     * @throws IOException
      */
-    List<String> getLaunchCommand(String workerId, List<String> existingCommand);
-
-    /**
-     * After reserving resources for the worker (i.e. calling reserveResourcesForWorker). this function can be used
-     * to get the launch command prefix
-     *
-     * @param workerId the of the worker
-     * @return the command line prefix for launching a worker with resource isolation
-     */
-    List<String> getLaunchCommandPrefix(String workerId);
-
-    /**
-     * Get the list of PIDs currently in an isolated container.
-     *
-     * @param workerId the id of the worker to get these for
-     * @return the set of PIDs, this will be combined with other ways of getting PIDs. An Empty set if no PIDs are
-     *     found.
-     * @throws IOException on any error
-     */
-    Set<Long> getRunningPids(String workerId) throws IOException;
+    void launchWorkerProcess(String user, String workerId, List<String> command, Map<String, String> env,
+                             String logPrefix, ExitCodeCallback processExitCallback, File targetDir) throws IOException;
 
     /**
      * Get the current memory usage of the a given worker.
@@ -90,4 +79,51 @@ public interface ResourceIsolationInterface {
      * @throws IOException on any error.
      */
     long getSystemFreeMemoryMb() throws IOException;
+
+    /**
+     * Kill the given worker.
+     * @param user the user that the worker is running as
+     * @param workerId the id of the worker to kill
+     * @throws IOException on any error
+     */
+    void kill(String user, String workerId) throws IOException;
+
+    /**
+     * Kill the given worker forcefully
+     * @param user the user that the worker is running as
+     * @param workerId the id of the worker to kill
+     * @throws IOException on any error
+     */
+    void forceKill(String user, String workerId) throws IOException;
+
+    /**
+     * Check if all the processes are dead.
+     * @param user the user that the processes are running as
+     * @param workerId the id of the worker to kill
+     * @return true if all the processed are dead; false otherwise
+     * @throws IOException on any error
+     */
+    boolean areAllProcessesDead(String user, String workerId) throws IOException;
+
+    /**
+     * Run profiling command.
+     * @param user the user that the worker is running as
+     * @param workerId the id of the worker
+     * @param command the command to run
+     * @param env the environment to run the command
+     * @param logPrefix the prefix to include in the logs
+     * @param targetDir the working directory to run the command in
+     * @return true if succeeds; false otherwise
+     * @throws IOException on any error
+     * @throws InterruptedException if interrupted
+     */
+    boolean runProfilingCommand(String user, String workerId, List<String> command, Map<String, String> env,
+                                String logPrefix, File targetDir) throws IOException, InterruptedException;
+
+    /**
+     * Return true if resources are being managed.
+     * The {@link DefaultResourceIsolationManager} will have it return false since it doesn't really manage resources.
+     * @return true if resources are being managed.
+     */
+    boolean isResourceManaged();
 }
