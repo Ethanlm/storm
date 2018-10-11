@@ -204,6 +204,12 @@ public class CgroupManager extends DefaultResourceIsolationManager {
         }
     }
 
+    /**
+     * To compose launch command based on workerId and existing command.
+     * @param workerId the worker id
+     * @param existingCommand the current command to run that may need to be modified
+     * @return new commandline with necessary additions to launch worker
+     */
     @VisibleForTesting
     public List<String> getLaunchCommand(String workerId, List<String> existingCommand) {
         List<String> newCommand = getLaunchCommandPrefix(workerId);
@@ -248,7 +254,9 @@ public class CgroupManager extends DefaultResourceIsolationManager {
     }
 
     /**
-     * @return all of the pids that are a part of this container.
+     * Get all of the pids that are a part of this container.
+     * @param workerId the worker id
+     * @return all of the pids that are a part of this container
      */
     @Override
     protected Set<Long> getAllPids(String workerId) throws IOException {

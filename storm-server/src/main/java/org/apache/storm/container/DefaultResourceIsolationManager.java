@@ -73,30 +73,10 @@ public class DefaultResourceIsolationManager implements ResourceIsolationInterfa
         }
     }
 
-    @Override
-    public void forceKill(String user, String workerId) throws IOException {
-        Set<Long> pids = getAllPids(workerId);
-        for (Long pid : pids) {
-            forceKill(pid, user);
-        }
-    }
-
-    /**
-     * @return all of the pids that are a part of this container.
-     */
-    protected Set<Long> getAllPids(String workerId) throws IOException {
-        Set<Long> ret = new HashSet<>();
-        for (String listing : ConfigUtils.readDirContents(ConfigUtils.workerPidsRoot(conf, workerId))) {
-            ret.add(Long.valueOf(listing));
-        }
-        return ret;
-    }
-
     /**
      * Kill a given process.
-     *
      * @param pid the id of the process to kill
-     * @throws IOException
+     * @throws IOException on I/O exception
      */
     private void kill(long pid, String user) throws IOException {
         if (runAsUser) {
@@ -106,11 +86,18 @@ public class DefaultResourceIsolationManager implements ResourceIsolationInterfa
         }
     }
 
+    @Override
+    public void forceKill(String user, String workerId) throws IOException {
+        Set<Long> pids = getAllPids(workerId);
+        for (Long pid : pids) {
+            forceKill(pid, user);
+        }
+    }
+
     /**
      * Kill a given process forcefully.
-     *
      * @param pid the id of the process to kill
-     * @throws IOException
+     * @throws IOException on I/O exception
      */
     private void forceKill(long pid, String user) throws IOException {
         if (runAsUser) {
@@ -118,6 +105,18 @@ public class DefaultResourceIsolationManager implements ResourceIsolationInterfa
         } else {
             ServerUtils.forceKillProcess(String.valueOf(pid));
         }
+    }
+
+    /**
+     * Get all the pids that are a part of the container.
+     * @return all of the pids that are a part of this container
+     */
+    protected Set<Long> getAllPids(String workerId) throws IOException {
+        Set<Long> ret = new HashSet<>();
+        for (String listing : ConfigUtils.readDirContents(ConfigUtils.workerPidsRoot(conf, workerId))) {
+            ret.add(Long.valueOf(listing));
+        }
+        return ret;
     }
 
     private void signal(long pid, int signal, String user) throws IOException {
@@ -144,12 +143,10 @@ public class DefaultResourceIsolationManager implements ResourceIsolationInterfa
 
     /**
      * Is a process alive and running?.
-     *
      * @param pid the PID of the running process
      * @param user the user that is expected to own that process
      * @return true if it is, else false
-     *
-     * @throws IOException on any error
+     * @throws IOException on I/O exception
      */
     private boolean isProcessAlive(long pid, String user) throws IOException {
         if (ServerUtils.IS_ON_WINDOWS) {
@@ -188,6 +185,7 @@ public class DefaultResourceIsolationManager implements ResourceIsolationInterfa
         }
         return ret;
     }
+
     private boolean isPosixProcessAlive(long pid, String user) throws IOException {
         boolean ret = false;
         ProcessBuilder pb = new ProcessBuilder("ps", "-o", "user", "-p", String.valueOf(pid));

@@ -19,7 +19,9 @@
 package org.apache.storm.daemon.supervisor;
 
 import com.codahale.metrics.Meter;
+import java.io.BufferedWriter;
 import java.io.File;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;

@@ -25,16 +25,14 @@ import org.apache.storm.daemon.supervisor.ExitCodeCallback;
 public interface ResourceIsolationInterface {
 
     /**
-     * Called when starting up
-     *
+     * Called when starting up.
      * @param conf the cluster config
-     * @throws IOException on any error.
+     * @throws IOException on I/O exception.
      */
     void prepare(Map<String, Object> conf) throws IOException;
 
     /**
      * This function should be used prior to starting the worker to reserve resources for the worker.
-     *
      * @param workerId worker id of the worker to start
      * @param workerMemory the amount of memory for the worker or null if not enforced
      * @param workerCpu the amount of cpu for the worker or null if not enforced
@@ -42,9 +40,8 @@ public interface ResourceIsolationInterface {
     void reserveResourcesForWorker(String workerId, Integer workerMemory, Integer workerCpu);
 
     /**
-     * This function will be called when the worker needs to shutdown. This function should include logic to clean up
-     * after a worker is shutdown.
-     *
+     * This function will be called when the worker needs to shutdown.
+     * This function should include logic to clean up after a worker is shutdown.
      * @param workerId worker id to shutdown and clean up after
      */
     void releaseResourcesForWorker(String workerId);
@@ -59,7 +56,7 @@ public interface ResourceIsolationInterface {
      * @param logPrefix           the prefix to include in the logs
      * @param processExitCallback a callback for when the process exits
      * @param targetDir           the working directory to run the command in
-     * @throws IOException
+     * @throws IOException on I/O exception
      */
     void launchWorkerProcess(String user, String workerId, List<String> command, Map<String, String> env,
                              String logPrefix, ExitCodeCallback processExitCallback, File targetDir) throws IOException;
@@ -69,14 +66,15 @@ public interface ResourceIsolationInterface {
      *
      * @param workerId the id of the worker
      * @return the amount of memory the worker is using in bytes or -1 if not supported
-     * @throws IOException on any error.
+     * @throws IOException on I/O exception
      */
     long getMemoryUsage(String workerId) throws IOException;
 
     /**
-     * @return The amount of memory in bytes that are free on the system. This might not be the entire box, it might be
-     *     within a parent resource group.
-     * @throws IOException on any error.
+     * Get the amount of free memory in MB.
+     * This might not be the entire box, it might be within a parent resource group.
+     * @return The amount of memory in MB that are free on the system.
+     * @throws IOException on I/O exception
      */
     long getSystemFreeMemoryMb() throws IOException;
 
@@ -84,15 +82,15 @@ public interface ResourceIsolationInterface {
      * Kill the given worker.
      * @param user the user that the worker is running as
      * @param workerId the id of the worker to kill
-     * @throws IOException on any error
+     * @throws IOException on I/O exception
      */
     void kill(String user, String workerId) throws IOException;
 
     /**
-     * Kill the given worker forcefully
+     * Kill the given worker forcefully.
      * @param user the user that the worker is running as
      * @param workerId the id of the worker to kill
-     * @throws IOException on any error
+     * @throws IOException on I/O exception
      */
     void forceKill(String user, String workerId) throws IOException;
 
@@ -101,7 +99,7 @@ public interface ResourceIsolationInterface {
      * @param user the user that the processes are running as
      * @param workerId the id of the worker to kill
      * @return true if all the processed are dead; false otherwise
-     * @throws IOException on any error
+     * @throws IOException on I/O exception
      */
     boolean areAllProcessesDead(String user, String workerId) throws IOException;
 
@@ -114,7 +112,7 @@ public interface ResourceIsolationInterface {
      * @param logPrefix the prefix to include in the logs
      * @param targetDir the working directory to run the command in
      * @return true if succeeds; false otherwise
-     * @throws IOException on any error
+     * @throws IOException on I/O exception
      * @throws InterruptedException if interrupted
      */
     boolean runProfilingCommand(String user, String workerId, List<String> command, Map<String, String> env,
