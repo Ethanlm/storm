@@ -42,7 +42,7 @@ elif [[ $platform == 'darwin' ]]; then
     BINPATH="/usr/bin/"
 fi
 
-#check if jave is available at $BINPATH; if not, fall back to use java commands directly.
+#check if java is available at $BINPATH; if not, fall back to use java commands directly.
 JAVAPATH="${BINPATH}java"
 if [ -f "$JAVAPATH" ]; then
 	echo "$JAVAPATH found. Will use java utils from $BINPATH"
