@@ -18,7 +18,6 @@
 
 package org.apache.storm;
 
-import java.lang.IllegalStateException;
 import java.lang.reflect.Method;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;

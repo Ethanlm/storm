@@ -1024,8 +1024,7 @@ public class UIHelpers {
                                                Map<String, Object> config) {
         List<Map> supervisorMaps = new ArrayList<>();
         for (SupervisorSummary supervisorSummary : supervisors) {
-            Map<String, Object> supervisorMap = getPrettifiedSupervisorMap(supervisorSummary, config);
-            supervisorMaps.add(supervisorMap);
+            supervisorMaps.add(getPrettifiedSupervisorMap(supervisorSummary, config));
         }
         return supervisorMaps;
     }
