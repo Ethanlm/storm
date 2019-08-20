@@ -462,6 +462,7 @@ public class Nimbus implements Iface, Shutdownable, DaemonCommon {
     private AtomicReference<Map<String, Set<List<Integer>>>> idToExecutors;
     //May be null if worker tokens are not supported by the thrift transport.
     private WorkerTokenManager workerTokenManager;
+    private Set<String> blacklistedSupervisorIds;
 
     public Nimbus(Map<String, Object> conf, INimbus inimbus, StormMetricsRegistry metricsRegistry) throws Exception {
         this(conf, inimbus, null, null, null, null, null, metricsRegistry);
@@ -2701,10 +2702,17 @@ public class Nimbus implements Iface, Shutdownable, DaemonCommon {
         if (info.is_set_version()) {
             ret.set_version(info.get_version());
         }
+        if (blacklistedSupervisorIds.contains(supervisorId)) {
+            ret.set_blacklisted(true);
+        } else {
+            ret.set_blacklisted(false);
+        }
+
         return ret;
     }
 
     private ClusterSummary getClusterInfoImpl() throws Exception {
+        blacklistedSupervisorIds = getBlacklistedSupervisorIds();
         IStormClusterState state = stormClusterState;
         Map<String, SupervisorInfo> infos = state.allSupervisorInfo();
         List<SupervisorSummary> summaries = new ArrayList<>(infos.size());
@@ -3796,6 +3804,20 @@ public class Nimbus implements Iface, Shutdownable, DaemonCommon {
         }
     }
 
+    private Set<String> getBlacklistedSupervisorIds() throws TException {
+        Set<String> ret = new HashSet<>();
+        try {
+            BlacklistScheduler bs = (BlacklistScheduler) scheduler;
+            ret.addAll(bs.getBlacklistSupervisorIds());
+        } catch (Exception e) {
+            LOG.warn("Exception while retrieving blacklist supervisors", e);
+            if (e instanceof TException) {
+                throw (TException) e;
+            }
+        }
+        return ret;
+    }
+
     @SuppressWarnings("deprecation")
     @Override
     public String beginFileUpload() throws AuthorizationException, TException {
@@ -4231,6 +4253,7 @@ public class Nimbus implements Iface, Shutdownable, DaemonCommon {
     @Override
     public SupervisorPageInfo getSupervisorPageInfo(String superId, String host, boolean includeSys)
         throws NotAliveException, AuthorizationException, TException {
+        blacklistedSupervisorIds = getBlacklistedSupervisorIds();
         try {
             getSupervisorPageInfoCalls.mark();
             IStormClusterState state = stormClusterState;
