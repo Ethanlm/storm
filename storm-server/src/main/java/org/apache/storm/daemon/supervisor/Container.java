@@ -20,15 +20,11 @@ package org.apache.storm.daemon.supervisor;
 
 import com.codahale.metrics.Meter;
 import com.codahale.metrics.Timer;
-import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
-import java.io.InputStreamReader;
 import java.io.Writer;
-import java.lang.ProcessBuilder.Redirect;
 import java.nio.file.Files;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -52,7 +48,6 @@ import org.apache.storm.utils.ConfigUtils;
 import org.apache.storm.utils.LocalState;
 import org.apache.storm.utils.ObjectReader;
 import org.apache.storm.utils.ServerConfigUtils;
-import org.apache.storm.utils.ServerUtils;
 import org.apache.storm.utils.Utils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -75,7 +70,6 @@ public abstract class Container implements Killable {
     private final Meter numForceKill;
     private final Timer shutdownDuration;
     private final Timer cleanupDuration;
-
     protected final Map<String, Object> conf;
     protected final Map<String, Object> topoConf; //Not set if RECOVER_PARTIAL
     protected final String topologyId; //Not set if RECOVER_PARTIAL
@@ -91,6 +85,7 @@ public abstract class Container implements Killable {
     protected ContainerMemoryTracker containerMemoryTracker;
     private long lastMetricProcessTime = 0L;
     private Timer.Context shutdownTimer = null;
+    protected boolean runAsUser;
     private String cachedUser;
 
     /**
@@ -102,7 +97,7 @@ public abstract class Container implements Killable {
      * @param supervisorPort the thrift server port of the supervisor this is a part of.
      * @param port the port the container is on. Should be <= 0 if only a partial recovery @param assignment
      *     the assignment for this container. Should be null if only a partial recovery.
-     * @param resourceIsolationManager used to isolate resources for a container can be null if no isolation is used.
+     * @param resourceIsolationManager used to isolate resources for a container.
      * @param workerId the id of the worker to use. Must not be null if doing a partial recovery.
      * @param topoConf the config of the topology (mostly for testing) if null and not a partial recovery the real conf is read.
      * @param ops file system operations (mostly for testing) if null a new one is made
@@ -133,6 +128,11 @@ public abstract class Container implements Killable {
         this.supervisorPort = supervisorPort;
         this.resourceIsolationManager = resourceIsolationManager;
         this.assignment = assignment;
+
+        runAsUser = ObjectReader.getBoolean(conf.get(Config.SUPERVISOR_RUN_WORKER_AS_USER), false);
+        if (runAsUser && Utils.isOnWindows()) {
+            throw new UnsupportedOperationException("ERROR: Windows doesn't support running workers as different users yet");
+        }
 
         if (this.type.isOnlyKillable()) {
             assert (this.assignment == null);
@@ -177,15 +177,6 @@ public abstract class Container implements Killable {
         return ConfigUtils.readSupervisorStormConf(conf, topologyId);
     }
 
-    /**
-     * Kill a given process.
-     *
-     * @param pid the id of the process to kill
-     */
-    protected void kill(long pid) throws IOException {
-        ServerUtils.killProcessWithSigTerm(String.valueOf(pid));
-    }
-
     @Override
     public void kill() throws IOException {
         LOG.info("Killing {}:{}", supervisorId, workerId);
@@ -193,10 +184,8 @@ public abstract class Container implements Killable {
             shutdownTimer = shutdownDuration.time();
         }
         try {
-            Set<Long> pids = getAllPids();
-
-            for (Long pid : pids) {
-                kill(pid);
+            if (resourceIsolationManager != null) {
+                resourceIsolationManager.kill(getWorkerUser(), workerId);
             }
         } catch (IOException e) {
             numKillExceptions.mark();
@@ -204,24 +193,13 @@ public abstract class Container implements Killable {
         }
     }
 
-    /**
-     * Kill a given process.
-     *
-     * @param pid the id of the process to kill
-     */
-    protected void forceKill(long pid) throws IOException {
-        ServerUtils.forceKillProcess(String.valueOf(pid));
-    }
-
     @Override
     public void forceKill() throws IOException {
         LOG.info("Force Killing {}:{}", supervisorId, workerId);
         numForceKill.mark();
         try {
-            Set<Long> pids = getAllPids();
-
-            for (Long pid : pids) {
-                forceKill(pid);
+            if (resourceIsolationManager != null) {
+                resourceIsolationManager.forceKill(getWorkerUser(), workerId);
             }
         } catch (IOException e) {
             numForceKillExceptions.mark();
@@ -243,88 +221,11 @@ public abstract class Container implements Killable {
         return hb;
     }
 
-    /**
-     * Is a process alive and running?.
-     *
-     * @param pid the PID of the running process
-     * @param user the user that is expected to own that process
-     * @return true if it is, else false
-     *
-     * @throws IOException on any error
-     */
-    protected boolean isProcessAlive(long pid, String user) throws IOException {
-        if (ServerUtils.IS_ON_WINDOWS) {
-            return isWindowsProcessAlive(pid, user);
-        }
-        return isPosixProcessAlive(pid, user);
-    }
-
-    private boolean isWindowsProcessAlive(long pid, String user) throws IOException {
-        boolean ret = false;
-        ProcessBuilder pb = new ProcessBuilder("tasklist", "/fo", "list", "/fi", "pid eq " + pid, "/v");
-        pb.redirectError(Redirect.INHERIT);
-        Process p = pb.start();
-        try (BufferedReader in = new BufferedReader(new InputStreamReader(p.getInputStream()))) {
-            String read;
-            while ((read = in.readLine()) != null) {
-                if (read.contains("User Name:")) { //Check for : in case someone called their user "User Name"
-                    //This line contains the user name for the pid we're looking up
-                    //Example line: "User Name:    exampleDomain\exampleUser"
-                    List<String> userNameLineSplitOnWhitespace = Arrays.asList(read.split(":"));
-                    if (userNameLineSplitOnWhitespace.size() == 2) {
-                        List<String> userAndMaybeDomain = Arrays.asList(userNameLineSplitOnWhitespace.get(1).trim().split("\\\\"));
-                        String processUser = userAndMaybeDomain.size() == 2 ? userAndMaybeDomain.get(1) : userAndMaybeDomain.get(0);
-                        if (user.equals(processUser)) {
-                            ret = true;
-                        } else {
-                            LOG.info("Found {} running as {}, but expected it to be {}", pid, processUser, user);
-                        }
-                    } else {
-                        LOG.error("Received unexpected output from tasklist command. Expected one colon in user name line. Line was {}",
-                            read);
-                    }
-                    break;
-                }
-            }
-        }
-        return ret;
-    }
-
-    private boolean isPosixProcessAlive(long pid, String user) throws IOException {
-        boolean ret = false;
-        ProcessBuilder pb = new ProcessBuilder("ps", "-o", "user", "-p", String.valueOf(pid));
-        pb.redirectError(Redirect.INHERIT);
-        Process p = pb.start();
-        try (BufferedReader in = new BufferedReader(new InputStreamReader(p.getInputStream()))) {
-            String first = in.readLine();
-            assert ("USER".equals(first));
-            String processUser;
-            while ((processUser = in.readLine()) != null) {
-                if (user.equals(processUser)) {
-                    ret = true;
-                    break;
-                } else {
-                    LOG.info("Found {} running as {}, but expected it to be {}", pid, processUser, user);
-                }
-            }
-        }
-        return ret;
-    }
-    
     @Override
     public boolean areAllProcessesDead() throws IOException {
-        Set<Long> pids = getAllPids();
-        String user = getRunWorkerAsUser();
-
         boolean allDead = true;
-        for (Long pid : pids) {
-            LOG.debug("Checking if pid {} owner {} is alive", pid, user);
-            if (!isProcessAlive(pid, user)) {
-                LOG.debug("{}: PID {} is dead", workerId, pid);
-            } else {
-                allDead = false;
-                break;
-            }
+        if (resourceIsolationManager != null) {
+            allDead = resourceIsolationManager.areAllProcessesDead(getWorkerUser(), workerId);
         }
         
         if (allDead && shutdownTimer != null) {
@@ -505,25 +406,6 @@ public abstract class Container implements Killable {
     }
 
     /**
-     * Get all PIDs.
-     * @return all of the pids that are a part of this container.
-     */
-    protected Set<Long> getAllPids() throws IOException {
-        Set<Long> ret = new HashSet<>();
-        for (String listing : ConfigUtils.readDirContents(ConfigUtils.workerPidsRoot(conf, workerId))) {
-            ret.add(Long.valueOf(listing));
-        }
-
-        if (resourceIsolationManager != null) {
-            Set<Long> morePids = resourceIsolationManager.getRunningPids(workerId);
-            assert (morePids != null);
-            ret.addAll(morePids);
-        }
-
-        return ret;
-    }
-
-    /**
      * Get worker user.
      * @return the user that some operations should be done as.
      *
@@ -565,17 +447,6 @@ public abstract class Container implements Killable {
         }
     }
 
-    /**
-     * Returns the user that the worker process is running as.
-     *
-     * <p>The default behavior is to launch the worker as the user supervisor is running as (e.g. 'storm')
-     *
-     * @return the user that the worker process is running as.
-     */
-    protected String getRunWorkerAsUser() {
-        return System.getProperty("user.name");
-    }
-
     protected void saveWorkerUser(String user) throws IOException {
         type.assertFull();
         LOG.info("SET worker-user {} {}", workerId, user);
@@ -595,13 +466,7 @@ public abstract class Container implements Killable {
      */
     public void cleanUpForRestart() throws IOException {
         LOG.info("Cleaning up {}:{}", supervisorId, workerId);
-        Set<Long> pids = getAllPids();
         String user = getWorkerUser();
-
-        for (Long pid : pids) {
-            File path = new File(ConfigUtils.workerPidPath(conf, workerId, pid));
-            ops.deleteIfExists(path, user, workerId);
-        }
 
         //clean up for resource isolation if enabled
         if (resourceIsolationManager != null) {

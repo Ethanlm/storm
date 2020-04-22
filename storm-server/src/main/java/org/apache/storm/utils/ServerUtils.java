@@ -20,13 +20,16 @@ package org.apache.storm.utils;
 
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
+import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
+import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.io.RandomAccessFile;
 import java.net.URL;
@@ -45,6 +48,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.jar.JarFile;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
@@ -772,5 +777,105 @@ public class ServerUtils {
             }
             Utils.sleep(attemptsIntervalTime);
         }
+    }
+
+    private static final Pattern MEMINFO_PATTERN = Pattern.compile("^([^:\\s]+):\\s*([0-9]+)\\s*kB$");
+
+    /**
+     * Get system free memory in megabytes.
+     * @return system free memory in megabytes
+     * @throws IOException on I/O exception
+     */
+    public static long getMemInfoFreeMb() throws IOException {
+        //MemFree:        14367072 kB
+        //Buffers:          536512 kB
+        //Cached:          1192096 kB
+        // MemFree + Buffers + Cached
+        long memFree = 0;
+        long buffers = 0;
+        long cached = 0;
+        try (BufferedReader in = new BufferedReader(new FileReader("/proc/meminfo"))) {
+            String line = null;
+            while ((line = in.readLine()) != null) {
+                Matcher match = MEMINFO_PATTERN.matcher(line);
+                if (match.matches()) {
+                    String tag = match.group(1);
+                    if (tag.equalsIgnoreCase("MemFree")) {
+                        memFree = Long.parseLong(match.group(2));
+                    } else if (tag.equalsIgnoreCase("Buffers")) {
+                        buffers = Long.parseLong(match.group(2));
+                    } else if (tag.equalsIgnoreCase("Cached")) {
+                        cached = Long.parseLong(match.group(2));
+                    }
+                }
+            }
+        }
+        return (memFree + buffers + cached) / 1024;
+    }
+
+    /**
+     * Is a process alive and running?.
+     * @param pid the PID of the running process
+     * @param user the user that is expected to own that process
+     * @return true if it is, else false
+     * @throws IOException on I/O exception
+     */
+    public static boolean isProcessAlive(long pid, String user) throws IOException {
+        if (ServerUtils.IS_ON_WINDOWS) {
+            return isWindowsProcessAlive(pid, user);
+        }
+        return isPosixProcessAlive(pid, user);
+    }
+
+    private static boolean isWindowsProcessAlive(long pid, String user) throws IOException {
+        boolean ret = false;
+        ProcessBuilder pb = new ProcessBuilder("tasklist", "/fo", "list", "/fi", "pid eq " + pid, "/v");
+        pb.redirectError(ProcessBuilder.Redirect.INHERIT);
+        Process p = pb.start();
+        try (BufferedReader in = new BufferedReader(new InputStreamReader(p.getInputStream()))) {
+            String read;
+            while ((read = in.readLine()) != null) {
+                if (read.contains("User Name:")) { //Check for : in case someone called their user "User Name"
+                    //This line contains the user name for the pid we're looking up
+                    //Example line: "User Name:    exampleDomain\exampleUser"
+                    List<String> userNameLineSplitOnWhitespace = Arrays.asList(read.split(":"));
+                    if (userNameLineSplitOnWhitespace.size() == 2) {
+                        List<String> userAndMaybeDomain = Arrays.asList(userNameLineSplitOnWhitespace.get(1).trim().split("\\\\"));
+                        String processUser = userAndMaybeDomain.size() == 2 ? userAndMaybeDomain.get(1) : userAndMaybeDomain.get(0);
+                        if (user.equals(processUser)) {
+                            ret = true;
+                        } else {
+                            LOG.info("Found {} running as {}, but expected it to be {}", pid, processUser, user);
+                        }
+                    } else {
+                        LOG.error("Received unexpected output from tasklist command. Expected one colon in user name line. Line was {}",
+                            read);
+                    }
+                    break;
+                }
+            }
+        }
+        return ret;
+    }
+
+    private static boolean isPosixProcessAlive(long pid, String user) throws IOException {
+        boolean ret = false;
+        ProcessBuilder pb = new ProcessBuilder("ps", "-o", "user", "-p", String.valueOf(pid));
+        pb.redirectError(ProcessBuilder.Redirect.INHERIT);
+        Process p = pb.start();
+        try (BufferedReader in = new BufferedReader(new InputStreamReader(p.getInputStream()))) {
+            String first = in.readLine();
+            assert ("USER".equals(first));
+            String processUser;
+            while ((processUser = in.readLine()) != null) {
+                if (user.equals(processUser)) {
+                    ret = true;
+                    break;
+                } else {
+                    LOG.info("Found {} running as {}, but expected it to be {}", pid, processUser, user);
+                }
+            }
+        }
+        return ret;
     }
 }

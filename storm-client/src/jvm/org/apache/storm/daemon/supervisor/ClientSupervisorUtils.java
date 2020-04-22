@@ -77,9 +77,10 @@ public class ClientSupervisorUtils {
         return ret;
     }
 
-    static Process processLauncher(Map<String, Object> conf, String user, List<String> commandPrefix, List<String> args,
-                                   Map<String, String> environment, final String logPreFix,
-                                   final ExitCodeCallback exitCodeCallback, File dir) throws IOException {
+    public static Process processLauncher(Map<String, Object> conf, String user,
+                                          List<String> commandPrefix, List<String> args,
+                                          Map<String, String> environment, final String logPreFix,
+                                          final ExitCodeCallback exitCodeCallback, File dir) throws IOException {
         if (StringUtils.isBlank(user)) {
             throw new IllegalArgumentException("User cannot be blank when calling processLauncher.");
         }
