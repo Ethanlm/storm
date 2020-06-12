@@ -409,6 +409,7 @@ worker.metrics:
     "CGroupMemoryLimit": "org.apache.storm.metric.cgroup.CGroupMemoryLimit"
     "CGroupCpu": "org.apache.storm.metric.cgroup.CGroupCpu"
     "CGroupCpuGuarantee": "org.apache.storm.metric.cgroup.CGroupCpuGuarantee"
+    "CGroupCpuGuaranteeByCfsQuota": "org.apache.storm.metric.cgroup.CGroupCpuGuaranteeByCfsQuota"
 
 # The number of buckets for running statistics
 num.stat.buckets: 20
