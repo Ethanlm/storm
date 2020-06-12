@@ -20,13 +20,13 @@ import org.apache.storm.container.cgroup.core.CpuCore;
 
 /**
  * Report the guaranteed number of ms this worker has requested.
- * It gets the result from cpu.shares.
- * Use this when org.apache.storm.container.cgroup.CgroupManager is used as the storm.resource.isolation.plugin.
+ * It gets the result from cpu.cfs_period_us and cpu.cfs_quota_us.
+ * Use this when org.apache.storm.container.docker.DockerManager is used as the storm.resource.isolation.plugin.
  */
-public class CGroupCpuGuarantee extends CGroupMetricsBase<Long> {
+public class CGroupCpuGuaranteeByCfsQuota extends CGroupMetricsBase<Long> {
     long previousTime = -1;
 
-    public CGroupCpuGuarantee(Map<String, Object> conf) {
+    public CGroupCpuGuaranteeByCfsQuota(Map<String, Object> conf) {
         super(conf, SubSystemType.cpu);
     }
 
@@ -35,12 +35,11 @@ public class CGroupCpuGuarantee extends CGroupMetricsBase<Long> {
         CpuCore cpu = (CpuCore) core;
         Long msGuarantee = null;
         long now = System.currentTimeMillis();
+        long cpuCfsQuotaUs = cpu.getCpuCfsQuotaUs();
+        long cpuCfsPeriodUs = cpu.getCpuCfsPeriodUs();
+        double percentage = cpuCfsQuotaUs * 1.0 / cpuCfsPeriodUs;
         if (previousTime > 0) {
-            long shares = cpu.getCpuShares();
-            //By convention each share corresponds to 1% of a CPU core
-            // or 100 = 1 core full time. So the guaranteed number of ms
-            // (approximately) should be ...
-            msGuarantee = (shares * (now - previousTime)) / 100;
+            msGuarantee = Math.round(percentage * (now - previousTime));
         }
         previousTime = now;
         return msGuarantee;

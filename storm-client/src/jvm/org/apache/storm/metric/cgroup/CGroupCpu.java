@@ -21,6 +21,8 @@ import org.apache.storm.container.cgroup.SubSystemType;
 import org.apache.storm.container.cgroup.core.CgroupCore;
 import org.apache.storm.container.cgroup.core.CpuacctCore;
 import org.apache.storm.container.cgroup.core.CpuacctCore.StatType;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Report CPU used in the cgroup.
@@ -29,6 +31,7 @@ public class CGroupCpu extends CGroupMetricsBase<Map<String, Long>> {
     long previousSystem = 0;
     long previousUser = 0;
     private int userHz = -1;
+    private static final Logger LOG = LoggerFactory.getLogger(CGroupCpu.class);
 
     public CGroupCpu(Map<String, Object> conf) {
         super(conf, SubSystemType.cpuacct);
@@ -61,6 +64,7 @@ public class CGroupCpu extends CGroupMetricsBase<Map<String, Long>> {
         HashMap<String, Long> ret = new HashMap<>();
         ret.put("user-ms", user * 1000 / hz); //Convert to millis
         ret.put("sys-ms", sys * 1000 / hz);
+        LOG.info("user-ms {}; sys-ms {}", ret.get("user-ms"), ret.get("sys-ms"));
         return ret;
     }
 }

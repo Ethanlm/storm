@@ -97,15 +97,7 @@ public abstract class CGroupMetricsBase<T> implements IMetric {
 
         core = CgroupCoreFactory.getInstance(type, new File(hierarchyDir, cgroupPath).getAbsolutePath());
 
-        try {
-            //enable for testing if this works (disable it again if it fails)
-            enabled = true;
-            getDataFrom(core);
-        } catch (Exception e) {
-            enabled = false;
-            LOG.warn("{} is disabled error trying to get the data {}", simpleName, e);
-            return;
-        }
+        enabled = true;
         LOG.info("{} is ENABLED {} exists...", simpleName, hierarchyDir);
     }
 
