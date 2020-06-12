@@ -120,6 +120,9 @@ public class Worker implements Shutdownable, DaemonCommon {
 
         this.topologyConf = ConfigUtils.overrideLoginConfigWithSystemProperty(ConfigUtils.readSupervisorStormConf(conf, topologyId));
 
+        topologyConf.put(Config.PACEMAKER_AUTH_METHOD, "NONE");
+        conf.put(Config.PACEMAKER_AUTH_METHOD, "NONE");
+
         if (supervisorIfaceSupplier == null) {
             this.supervisorIfaceSupplier = () -> {
                 try {
